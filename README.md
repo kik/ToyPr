@@ -1,0 +1,4 @@
+ToyPr
+=====
+
+Toy theorem prover
