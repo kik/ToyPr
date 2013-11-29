@@ -16,20 +16,16 @@ data ProofState = ProofState { goals :: [Goal]
 data GlobalState = GlobalState Global (Maybe ProofState)
 
 printProofState :: ProofState -> IO ()
-printProofState s = do mapM_ runGoal $ zip [1..] $ goals s
-                       --runProof $ proof s
+printProofState s = mapM_ runGoal $ zip [1 :: Int ..] $ goals s
   where
-    runGoal (i, (Goal _ ty e)) = do
+    runGoal (i, Goal _ ty e) = do
       putStrLn $ "---- Goal " ++ show i ++ " ----"
-      mapM_ runBinding $ zip [0..] $ tails e
+      mapM_ runBinding $ zip [0 :: Int ..] $ tails e
       putStrLn "===="
       putStrLn $ showsTerm e ty ""
-    runProof p = do
-      putStrLn $ "---- Proof ----"
-      putStrLn $ showsTerm [] p ""
-    runBinding (i, ((n, Decl ty):e)) = do
+    runBinding (i, (n, Decl ty):e) =
       putStrLn $ "[" ++ show i ++ "] " ++ name n ++ " : " ++ showsTerm e ty ""
-    runBinding (i, ((n, Def t ty):e)) = do
+    runBinding (i, (n, Def t ty):e) =
       putStrLn $ "[" ++ show i ++ "] " ++ name n ++ " := " ++ showsTerm e t "" ++ " : " ++ showsTerm e ty ""
     runBinding (_, []) = return ()
     name (Just n) = n

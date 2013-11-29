@@ -38,6 +38,7 @@ main = do g <- initGlobal
                            Right input' -> do outputStrLn $ "Input was: " ++ show input'
                                               loop g
 
+{-# ANN mod_eq "HLint: ignore" #-}
 mod_eq :: IORef GlobalState -> IO ()
 mod_eq g = flip runReaderT g $ do
   uvar "eq" UnivExpr0

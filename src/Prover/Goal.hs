@@ -1,19 +1,17 @@
 module Prover.Goal where
 
-import Kernel
-import Prover.ProofState
-import Parser.TypedTerm
-import Data.List
-import Data.Maybe
-import Data.IORef
-import Control.Applicative
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.Error
-import Control.Exception
+import Kernel (assertType, Binding (Decl, Def), convertible, gbindings, Global (Global), Kernel, pattern, pushSubst, reduceFull, shift, Term (TmAbs, TmApp, TmConst, TmEq, TmEqInd, TmHole, TmProd, TmRefl, TmUniv, TmVar), termEqSyntactically, typeof, ubindings, UnivExpr, unKernel)
+import Prover.ProofState (GlobalState (GlobalState), Goal (Goal), goals, lemmaName, mainGoal, nextHoleId, printProofState, proof, ProofState (ProofState))
+import Parser.TypedTerm (runTypedTermParser, showsTerm)
+import Data.Maybe (isNothing)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Control.Monad.Reader (ask, lift, liftIO, ReaderT, runReader, unless)
+import Control.Monad.State (execStateT, get, put, StateT)
+import Control.Monad.Error (runErrorT)
+import Control.Exception (catch, IOException)
 
 initGlobal :: IO (IORef GlobalState)
-initGlobal = newIORef $ GlobalState (Global { gbindings = [], ubindings = [] }) Nothing
+initGlobal = newIORef $ GlobalState Global { gbindings = [], ubindings = [] } Nothing
 
 type ProverCommand a = ReaderT (IORef GlobalState) IO a
 type CommandImpl a = StateT GlobalState IO a
@@ -22,7 +20,7 @@ runTermHandler :: Kernel a -> CommandImpl a
 runTermHandler h = do GlobalState g _ <- get
                       case runReader (runErrorT (unKernel h)) g of
                         Right v -> return v
-                        Left e -> fail $ show e
+                        Left e -> undefined -- fail $ show e
 
 command :: CommandImpl () -> ProverCommand ()
 command body = do
@@ -36,9 +34,9 @@ command body = do
       return ()
 
 parseTerm :: String -> CommandImpl Term
-parseTerm s = do GlobalState gs mps <- get
+parseTerm s = do GlobalState _ mps <- get
                  let e = case mps of
-                       Just (ProofState { goals = Goal _ _ e :_ }) -> e
+                       Just (ProofState { goals = Goal _ _ e' :_ }) -> e'
                        _ -> []
                  case runTypedTermParser "" s (map fst e) of
                    Right t -> return t
@@ -131,7 +129,7 @@ tac f = command body
   where
     body = do
       f
-      GlobalState g ps <- get
+      GlobalState _ ps <- get
       case ps of
         Just s -> lift $ printProofState s
         Nothing -> return ()
@@ -178,6 +176,7 @@ introsw names = intros $ words names
 intro :: String -> ProverCommand ()
 intro name = intros [name]
 
+{-# ANN elim_eq "HLint: ignore" #-}
 elim_eq :: String -> String -> ProverCommand ()
 elim_eq name ts = tac f
   where
@@ -214,7 +213,7 @@ trans s = tac f
         _ -> fail "not identity type"
 
 sym :: ProverCommand ()
-sym = do tac f
+sym = tac f
   where
     f = do
       Goal i g e <- curGoal
@@ -226,41 +225,43 @@ sym = do tac f
             [Goal h1 g1 e]
         _ -> fail "not identity type"
 
+{-# ANN f_equal_1 "HLint: ignore" #-}
 f_equal_1 :: ProverCommand ()
-f_equal_1 = do tac f
+f_equal_1 = tac f
   where
     f = do
       Goal i g e <- curGoal
       case g of
-        TmEq a (TmApp f x) (TmApp g y) | termEqSyntactically x y -> do
+        TmEq _ (TmApp fn x) (TmApp gn y) | termEqSyntactically x y -> do
           h1 <- allocId
-          a <- runTermHandler $ typeof e f
-          b <- runTermHandler $ typeof e (TmApp f x)
-          let g1 = TmEq a f g
+          a <- runTermHandler $ typeof e fn
+          b <- runTermHandler $ typeof e (TmApp fn x)
+          let g1 = TmEq a fn gn
               ct = TmAbs Nothing a (TmAbs Nothing (shift 1 a) (TmAbs Nothing (TmEq (shift 2 a) (TmVar 1) (TmVar 0))
                                                                    (TmEq (shift 3 b)
                                                                     (TmApp (TmVar 2) (shift 3 x))
                                                                     (TmApp (TmVar 1) (shift 3 x)))))
               c = TmAbs Nothing a (TmRefl (shift 1 b) (TmApp (TmVar 0) (shift 1 x)))
-          updateGoal i (TmEqInd ct c f g (TmHole h1)) [Goal h1 g1 e]
+          updateGoal i (TmEqInd ct c fn gn (TmHole h1)) [Goal h1 g1 e]
         _ -> fail "not identity type"
           
+{-# ANN f_equal_2 "HLint: ignore" #-}
 f_equal_2 :: ProverCommand ()
-f_equal_2 = do tac f
+f_equal_2 = tac f
   where
     f = do
       Goal i g e <- curGoal
       case g of
-        TmEq a (TmApp f x) (TmApp g y) | termEqSyntactically f g -> do
+        TmEq _ (TmApp fn x) (TmApp gn y) | termEqSyntactically fn gn -> do
           h1 <- allocId
           a <- runTermHandler $ typeof e x
-          b <- runTermHandler $ typeof e (TmApp f x)
+          b <- runTermHandler $ typeof e (TmApp fn x)
           let g1 = TmEq a x y
               ct = TmAbs Nothing a (TmAbs Nothing (shift 1 a) (TmAbs Nothing (TmEq (shift 2 a) (TmVar 1) (TmVar 0))
                                                                    (TmEq (shift 3 b)
-                                                                    (TmApp (shift 3 f) (TmVar 2))
-                                                                    (TmApp (shift 3 f) (TmVar 1)))))
-              c = TmAbs Nothing a (TmRefl (shift 1 b) (TmApp (shift 1 f) (TmVar 0)))
+                                                                    (TmApp (shift 3 fn) (TmVar 2))
+                                                                    (TmApp (shift 3 fn) (TmVar 1)))))
+              c = TmAbs Nothing a (TmRefl (shift 1 b) (TmApp (shift 1 fn) (TmVar 0)))
           updateGoal i (TmEqInd ct c x y (TmHole h1)) [Goal h1 g1 e]
         _ -> fail "not identity type"
           
@@ -269,7 +270,7 @@ compute :: String -> ProverCommand ()
 compute s = command f
   where
     f = do t <- parseTerm s
-           GlobalState g mps <- get
+           GlobalState _ mps <- get
            case mps of
              Nothing -> do
                v <- runTermHandler $ reduceFull [] t -- TODO: type check
@@ -277,5 +278,6 @@ compute s = command f
              Just (ProofState { goals = Goal _ _ e:_ }) -> do
                v <- runTermHandler $ reduceFull e t -- TODO: type check
                liftIO $ putStrLn $ "Value: " ++ showsTerm e v ""
+             _ -> undefined
 
 

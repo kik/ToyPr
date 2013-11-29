@@ -64,6 +64,7 @@ use j = foldTerm False f
     f _ _ _ (TmHole _) = error "uname to test use hole"
     f dflt _ _ _ = dflt
 
+termEqSyntactically :: Term -> Term -> Bool
 termEqSyntactically t s = t === s
   where
     TmUniv i  === TmUniv j  = i == j
@@ -80,7 +81,7 @@ termEqSyntactically t s = t === s
     _ === _ = False
 
 termPattern :: Int -> Term -> Term -> Term
-termPattern i s = walk 0 s
+termPattern i = walk 0
   where
     walk c s t | termEqSyntactically s t = TmVar $ i + c
     walk c s t = case t of

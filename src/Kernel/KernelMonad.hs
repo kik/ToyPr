@@ -12,9 +12,11 @@ data KernelError = TypeError String [(LocalEnv, Term)]
 instance Error KernelError where
   strMsg = FatalError
 
+{-
 instance Show KernelError where
   show (TypeError s ts) = "type error: " ++ s ++ " " ++ show (map (uncurry LocalTerm) ts)
   show (FatalError s) = "fatal error: " ++ s
+-}
 
 newtype Kernel a = Kernel { unKernel :: ErrorT KernelError (Reader Global) a }
 

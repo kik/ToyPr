@@ -3,8 +3,6 @@ module Kernel.Env where
 import Kernel.Universe
 import Kernel.Term
 
-import Data.List (intersperse)
-
 data Binding = Decl Type
              | Def  Type Term
 
@@ -23,6 +21,7 @@ lookupVar e i = if 0 <= i && i < l then Just (snd (e!!i)) else Nothing
 lookupConst :: GlobalBindings -> String -> Maybe Binding
 lookupConst g name = lookup name g
 
+{-
 showsLocalTerm :: LocalEnv -> Term -> ShowS
 showsLocalTerm l = walk (10 :: Int) $ env l
   where
@@ -55,20 +54,22 @@ showsLocalTerm l = walk (10 :: Int) $ env l
             | termEqSyntactically (shift 1 ty) ty' =
               showString n' . showString " " . abst (n':e') t'
             where n' = if use 0 t' then alpha e' n else "_"
-          abst e (TmAbs n ty body) =
-            showString n' . showString " : " . walk 10 e ty . showString " => " . walk 10 (n':e) body
-            where n' = if use 0 body then alpha e n else "_"
+          abst e' (TmAbs n ty body) =
+            showString n' . showString " : " . walk 10 e' ty . showString " => " . walk 10 (n':e') body
+            where n' = if use 0 body then alpha e' n else "_"
           abst _ _ = undefined
       TmApp t1 t2 -> paren 2 $ list [w 2 t1, w 1 t2]
       TmRefl a x -> paren 2 $ list [showString "eq_refl", w 1 a, w 1 x]
       TmEqInd ct c x y p -> paren 2 $ list $ showString "eq_ind" : map (w 1) [ct, c, x, y, p]
       TmEq a x y -> paren 3 $ list[w 2 x, showString "=", w 2 y, showString ":>", w 3 a]
       where
-        w pr = walk pr e
+        w pr' = walk pr' e
         paren n s = showParen (pr < n) s
         list = foldr (.) id . intersperse (showChar ' ')
 
+-}
+
 data LocalTerm = LocalTerm LocalEnv Term
 
-instance Show LocalTerm where
-  showsPrec _ (LocalTerm e t) = showsLocalTerm e t
+--instance Show LocalTerm where
+--  showsPrec _ (LocalTerm e t) = showsLocalTerm e t
