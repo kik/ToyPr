@@ -3,21 +3,16 @@ module Main where
 import Kernel
 import Prover.ProofState
 import Prover.Goal
+import Parser.TypedTerm
+import Parser.InputLine
 import Data.IORef
 import Control.Monad.Reader
 import System.Console.Haskeline
+import Control.Applicative hiding (many)
 import Text.Parsec hiding ((<|>))
 
 type InputParser a = Parsec String () a
 
-parseInput :: InputParser ([String], String)
-parseInput = do cs <- many (try cmd)
-                rest <- many anyChar
-                return (cs, rest)
-  where
-    cmd = manyTill anyChar fullstop
-    fullstop = try $ do void $ char '.'
-                        space
 
         
 
@@ -33,10 +28,9 @@ main = do g <- initGlobal
         Nothing -> return ()
         Just "quit" -> return ()
         Just input -> do outputStrLn $ "Input was: " ++ input
-                         case runParser parseInput () "" (input ++ "\n") of
-                           Left _ -> return ()
-                           Right input' -> do outputStrLn $ "Input was: " ++ show input'
-                                              loop g
+                         let input' = splitInput input
+                         outputStrLn $ "Input was: " ++ show input'
+                         loop g
 
 {-# ANN mod_eq "HLint: ignore" #-}
 mod_eq :: IORef GlobalState -> IO ()

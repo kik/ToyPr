@@ -1,39 +1,30 @@
 module Parser.TypedTerm where
 
-import Kernel.Universe
-import Kernel.Term
-import Kernel.Env
-import Data.List
-import Control.Applicative hiding (many)
-import Control.Monad
-import Text.Parsec hiding ((<|>))
+import Kernel.Universe (UnivExpr (UnivExprVar))
+import Kernel.Term (shift, Term (TmAbs, TmApp, TmConst, TmEq, TmEqInd, TmHole, TmProd, TmRefl, TmUniv, TmVar), termEqSyntactically, use)
+import Kernel.Env (LocalEnv)
+import Parser.Token (identifier, kEqInd, kEqRefl, kForall, kFun, kType, opArrow, opEq, opEqCoarse, opMapsTo, parens, symbol, whiteSpace)
+import Data.List (elemIndex, intersperse)
+import Control.Applicative ((<$), (<*), (<*>), (<|>))
+import Control.Monad (liftM, mzero, unless)
+import Text.Parsec (alphaNum, between, chainr1, char, choice, eof, letter, lookAhead, many1, oneOf, option, Parsec, ParseError, runParser, spaces, string, try)
 import Data.Maybe (fromMaybe)
 
 type TermParser a = Parsec String () a
 
 termParser :: [Maybe String] -> TermParser Term
-termParser env = do { t <- goExpr env; eof; return t }
+termParser env = whiteSpace >> goExpr env
   where
-    ident = try $ do { spaces
-                     ; c <- lookAhead $ letter <|> char '_'
-                     ; cs <- many $ alphaNum <|> oneOf "_'"
-                     ; return (c:cs)
-                     }
-    op s = try $ ops >>= \x -> unless (s == x) mzero
-    ops = do { spaces
-             ; choice $ map (try . string) ["->", "=>", ":>", "(", ")", ",", ":", "="]
-             }
-
     binder e body = binders [] e body <|> binder1 e body
-    binder1 e body = do { names <- many1 ident
-                        ; op ":"
+    binder1 e body = do { names <- many1 identifier
+                        ; symbol ":"
                         ; ty <- goExpr e
                         ; let bs = [(name, shift i ty) | (i, name) <- zip [0..] names]
                               e' = foldl (\x y -> Just y : x) e names
                         ; body bs e'
                         }
-    binders bs e body = do { op "("
-                           ; binder1 e $ \bs' e' -> do { op ")"
+    binders bs e body = do { symbol "("
+                           ; binder1 e $ \bs' e' -> do { symbol ")"
                                                        ; binders (bs++bs') e' body
                                                          <|> body (bs++bs') e'
                                                        }
@@ -41,33 +32,40 @@ termParser env = do { t <- goExpr env; eof; return t }
     goExpr e = go10
       where
         go10 = go4
-        go4 = go3 `chainr1` do { op "->"; return $ \x y -> TmProd Nothing x (shift 1 y) }
+        go4 = go3 `chainr1` do { opArrow; return arr }
+          where arr x y = TmProd Nothing x (shift 1 y)
         go3 = do { x <- go2
-                 ; option x $ do { op "="
-                                 ; y <- go2
-                                 ; op ":>"
-                                 ; a <- go3
-                                 ; return $ TmEq a x y
-                                 }
+                 ; option x (eq x <$ opEq <*> go2 <* opEqCoarse <*> go3)
                  }
+          where eq x y a = TmEq a x y
         go2 = liftM (foldl1 TmApp) (many1 (try go1))
-        go1 = do { v <- ident; goIdent v  }
-              <|> between (op "(") (op ")") go10
-        goIdent "Type0" = return $ TmUniv UnivExpr0
-        goIdent "Type"  = do { name <- ident; return $ TmUniv (UnivExprVar name) }
-        goIdent "forall" = binder e $ \bs e' -> do { op ","
-                                                   ; body <- goExpr e'
-                                                   ; return $ foldr (\(name, ty) b -> TmProd (Just name) ty b) body bs
-                                                   }
-        goIdent "fun"    = binder e $ \bs e' -> do { op "=>"
-                                                   ; body <- goExpr e'
-                                                   ; return $ foldr (\(name, ty) b -> TmAbs (Just name) ty b) body bs
-                                                   }
-        goIdent "eq_refl" = TmRefl <$> go1 <*> go1
-        goIdent "eq_ind" = TmEqInd <$> go1 <*> go1 <*> go1 <*> go1 <*> go1
-        goIdent n = case elemIndex (Just n) e of
-          Just i -> return $ TmVar i
-          Nothing -> return $ TmConst n
+        go1 = goType
+           <|> goForall
+           <|> goFun
+           <|> goEqRefl
+           <|> goEqInd
+           <|> goIdent
+           <|> parens go10
+        goType = TmUniv . UnivExprVar <$ kType <*> identifier
+        goForall = do
+          kForall
+          binder e $ \bs e' -> do { symbol ","
+                                  ; body <- goExpr e'
+                                  ; return $ foldr (\(name, ty) b -> TmProd (Just name) ty b) body bs
+                                  }
+        goFun = do
+          kFun
+          binder e $ \bs e' -> do { opMapsTo
+                                  ; body <- goExpr e'
+                                  ; return $ foldr (\(name, ty) b -> TmAbs (Just name) ty b) body bs
+                                  }
+        goEqRefl = TmRefl <$ kEqRefl <*> go1 <*> go1
+        goEqInd = TmEqInd <$ kEqInd <*> go1 <*> go1 <*> go1 <*> go1 <*> go1
+        goIdent = do
+          n <- identifier
+          case elemIndex (Just n) e of
+            Just i -> return $ TmVar i
+            Nothing -> return $ TmConst n
 
 showsTerm :: LocalEnv -> Term -> ShowS
 showsTerm l = walk (10 :: Int) $ env l
@@ -115,5 +113,10 @@ showsTerm l = walk (10 :: Int) $ env l
         list = foldr (.) id . intersperse (showChar ' ')
 
 runTypedTermParser :: String -> String -> [Maybe String] -> Either ParseError Term
-runTypedTermParser fname input e = runParser (termParser e) () fname input
+runTypedTermParser fname input e = runParser parse () fname input
+  where
+    parse = do t <- termParser e
+               eof
+               return t
+
 

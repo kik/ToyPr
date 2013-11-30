@@ -19,7 +19,8 @@ cabal-version:       >=1.10
 executable toypr
   main-is:             Main.hs
   other-modules:       
-  -- other-extensions:    
+                       Parser.InputLine,
+                       Parser.Token
   build-depends:       base >=4.6 && <4.7,
                        mtl,
                        parsec,
