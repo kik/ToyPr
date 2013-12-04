@@ -10,6 +10,7 @@ import Control.Monad.Reader (ask, lift, liftIO, ReaderT, runReader, unless)
 import Control.Monad.State (execStateT, get, put, StateT)
 import Control.Monad.Error (runErrorT)
 import Control.Exception (catch, IOException)
+import Text.Parsec
 
 initGlobal :: IO (IORef GlobalState)
 initGlobal = newIORef $ GlobalState Global { gbindings = [], ubindings = [] } Nothing
@@ -34,15 +35,20 @@ command body = do
       putStrLn $ "Error: " ++ show e
       return ()
 
-parseTerm :: String -> CommandImpl Term
+parsePTTerm :: String -> ProverCommand PTTerm
+parsePTTerm s =
+  case runParser termParser () "" s of
+    Right t -> return t
+    Left err -> fail $ show err
+
+parseTerm :: PTTerm -> CommandImpl Term
 parseTerm s = do GlobalState _ mps <- get
                  let e = case mps of
                        Just (ProofState { goals = Goal _ _ e' :_ }) -> e'
                        _ -> []
-                 case runTypedTermParser "" s (map fst e) of
-                   Right (Just t) -> return t
-                   Right Nothing -> fail ""
-                   Left err -> fail $ show err
+                 case toKernelTerm (map fst e) s of
+                   Just t -> return t
+                   Nothing -> fail ""
 
 uvar :: String -> UnivExpr -> ProverCommand ()
 uvar n u = command f
@@ -51,7 +57,7 @@ uvar n u = command f
                let g' = g { ubindings = (n, u):ubindings g }
                put $ GlobalState g' mps
 
-lemma :: String -> String -> ProverCommand ()
+lemma :: String -> PTTerm -> ProverCommand ()
 lemma n props = command f
   where f = do prop <- parseTerm props
                GlobalState g mps <- get
@@ -136,7 +142,7 @@ tac f = command body
         Just s -> lift $ printProofState s
         Nothing -> return ()
 
-exact :: String -> ProverCommand ()
+exact :: PTTerm -> ProverCommand ()
 exact ts = tac f
   where
     f = do
@@ -147,7 +153,7 @@ exact ts = tac f
       unless b $ fail "invalid proof"
       updateGoal i t []
 
-assert :: String -> ProverCommand ()
+assert :: PTTerm -> ProverCommand ()
 assert ts = tac f
   where
     f = do
@@ -179,7 +185,7 @@ intro :: String -> ProverCommand ()
 intro name = intros [name]
 
 {-# ANN elim_eq "HLint: ignore" #-}
-elim_eq :: String -> String -> ProverCommand ()
+elim_eq :: String -> PTTerm -> ProverCommand ()
 elim_eq name ts = tac f
   where
     f = do
@@ -198,7 +204,7 @@ elim_eq name ts = tac f
         _ ->
           fail "not eq type"
 
-trans :: String -> ProverCommand ()
+trans :: PTTerm -> ProverCommand ()
 trans s = tac f
   where
     f = do
@@ -268,7 +274,7 @@ f_equal_2 = tac f
         _ -> fail "not identity type"
           
 
-compute :: String -> ProverCommand ()
+compute :: PTTerm -> ProverCommand ()
 compute s = command f
   where
     f = do t <- parseTerm s
