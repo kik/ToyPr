@@ -2,7 +2,8 @@ module Prover.Goal where
 
 import Kernel (assertType, Binding (Decl, Def), convertible, gbindings, Global (Global), Kernel, pattern, pushSubst, reduceFull, shift, Term (TmAbs, TmApp, TmConst, TmEq, TmEqInd, TmHole, TmProd, TmRefl, TmUniv, TmVar), termEqSyntactically, typeof, ubindings, UnivExpr, unKernel)
 import Prover.ProofState (GlobalState (GlobalState), Goal (Goal), goals, lemmaName, mainGoal, nextHoleId, printProofState, proof, ProofState (ProofState))
-import Parser.TypedTerm (runTypedTermParser, showsTerm)
+import Parser.TypedTerm (showsTerm)
+import Parser.PreTypedTerm
 import Data.Maybe (isNothing)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Control.Monad.Reader (ask, lift, liftIO, ReaderT, runReader, unless)
@@ -39,7 +40,8 @@ parseTerm s = do GlobalState _ mps <- get
                        Just (ProofState { goals = Goal _ _ e' :_ }) -> e'
                        _ -> []
                  case runTypedTermParser "" s (map fst e) of
-                   Right t -> return t
+                   Right (Just t) -> return t
+                   Right Nothing -> fail ""
                    Left err -> fail $ show err
 
 uvar :: String -> UnivExpr -> ProverCommand ()

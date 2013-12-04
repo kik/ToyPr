@@ -20,7 +20,8 @@ executable toypr
   main-is:             Main.hs
   other-modules:       
                        Parser.InputLine,
-                       Parser.Token
+                       Parser.Token,
+                       Parser.PreTypedTerm
   build-depends:       base >=4.6 && <4.7,
                        mtl,
                        parsec,
