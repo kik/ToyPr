@@ -21,7 +21,8 @@ executable toypr
   other-modules:       
                        Parser.InputLine,
                        Parser.Token,
-                       Parser.PreTypedTerm
+                       Parser.PreTypedTerm,
+                       Parser.Command
   build-depends:       base >=4.6 && <4.7,
                        mtl,
                        parsec,

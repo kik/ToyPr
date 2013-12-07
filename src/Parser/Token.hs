@@ -15,7 +15,7 @@ toyprLang = P.LanguageDef
         , P.opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
         , P.opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
         , P.reservedNames = words "Type forall fun eq_refl eq_ind"
-        , P.reservedOpNames = words "-> => :> ="
+        , P.reservedOpNames = words "\\/ -> => :> ="
         , P.caseSensitive = True
         }
 
@@ -52,6 +52,9 @@ opEqCoarse = P.reservedOp toyprToken ":>"
 opEq :: Parsec String () ()
 opEq = P.reservedOp toyprToken "="
 
+opOr :: Parsec String () ()
+opOr = P.reservedOp toyprToken "\\/"
+
 symbol :: String -> Parsec String () ()
 symbol s = void $ P.symbol toyprToken s
 
@@ -60,5 +63,9 @@ parens = P.parens toyprToken
 
 whiteSpace :: Parsec String () ()
 whiteSpace = P.whiteSpace toyprToken
+
+decimal :: Parsec String () Integer
+decimal = P.decimal toyprToken
+
 
 

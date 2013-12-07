@@ -4,7 +4,7 @@ import           Control.Applicative
 import           Kernel.Term
 import           Kernel.Universe
 import           Parser.Token
-import           Text.Parsec         hiding ((<|>))
+import           Text.Parsec         hiding ((<|>), many)
 import Data.List (elemIndex)
 import Text.Parsec.Error (Message)
 
@@ -23,6 +23,20 @@ data PTTerm = PTUniv UnivExpr
 type PTBinders = [PTBinder]
 data PTBinder  = PTBinder [String] PTTerm
 
+univParser :: Parsec String () UnivExpr
+univParser = whiteSpace >> goMax
+  where
+    goMax = goLift `chainl1` do { opOr; return UnivExprMax }
+    goLift = do { x <- goVar
+                ; xs <- many $ try $ do
+                  { symbol "+"
+                  ; decimal
+                  }
+                ; return $ foldl UnivExprLift x xs
+                }
+    goVar =  UnivExpr0 <$ symbol "0"
+         <|> UnivExprVar <$> identifier
+         <|> parens goMax
 
 termParser :: Parsec String () PTTerm
 termParser = whiteSpace >> goExpr

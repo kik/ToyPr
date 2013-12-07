@@ -1,10 +1,10 @@
 module Parser.InputLine where
 
 import Control.Monad (void)
-import Text.Parsec (anyChar, char, many, manyTill, runParser, space, try)
+import Text.Parsec ((<|>), anyChar, char, many, manyTill, runParser, space, try, eof)
 
 splitInput :: String -> ([String], String)
-splitInput input = case runParser inp () "" (input ++ "\n") of
+splitInput input = case runParser inp () "" input of
                      Left _ -> ([], input)
                      Right r -> r
   where
@@ -13,4 +13,4 @@ splitInput input = case runParser inp () "" (input ++ "\n") of
              return (cs, rest)
     sentense = manyTill anyChar fullstop
     fullstop = try $ do void $ char '.'
-                        space
+                        void space <|> eof
